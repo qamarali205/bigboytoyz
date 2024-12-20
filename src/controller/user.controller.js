@@ -44,20 +44,28 @@ exports.registerUser =async (req, res) => {
   try {
     const { firstName, lastName, userEmail, mobileNumber} = req.body;
 
-    // console.log(req.body);
-    // return
+   // Check if any required field is missing
+if (!firstName || !lastName || !userEmail || !mobileNumber) {
+  return res
+    .status(400)
+    .json({
+      status: 400,
+      message: "Please provide all the required fields: first name, last name, email, and mobile number. If you have only one name, please enter the same name for both first name and last name."
+    });
+}
+
 
     // Check if the user already exists
     const existingUser = await User.findOne({ userEmail });
     if (existingUser) {
       return res
         .status(400)
-        .json({ status: 400, message: "User already exists" });
+        .json({ status: 400, message: "User already exists. Check your register email account inbox for password." });
     }
 
     const passwordWithOutHash=generatePassword(firstName, lastName, mobileNumber);
     // Hash the password before saving
-    console.log(passwordWithOutHash)
+    // console.log(passwordWithOutHash)
     const hashedPassword = await bcrypt.hash(passwordWithOutHash, 10);
 
     // Create a new user object
@@ -175,7 +183,7 @@ exports.loginUser = async (req, res) => {
 
     if (!userEmail || !password) {
       return res.status(400).json({
-        status: "error",
+        status: 400,
         message: "Email and password are required",
       });
     }
@@ -196,13 +204,16 @@ exports.loginUser = async (req, res) => {
     }
 
     const token = generateToken(user);
+
+    // Exclude the password field from the user object
+    const { password: userPassword, ...userWithoutPassword } = user.toObject();
     
 
     res.status(200).json({
       status: 200,
       token,
       message: "Login Successful",
-      data:user,
+      data:userWithoutPassword,
     });
   } catch (error) {
     res.status(500).json({
@@ -227,7 +238,7 @@ exports.addProfileDetails =async (req, res) =>{
 
     if(wordCount>400){
       return res.status(400).json({
-        status: "error",
+        status: 400,
         message: "The boi field must contain less than 400 words.",
       });
 
@@ -350,7 +361,7 @@ exports.addVideowithThumbnail = async (req, res) => {
 
     if(titleCount>30){
       return res.status(400).json({
-        status: "error",
+        status: 400,
         message: "The video title field must contain less than 20 words.",
       });
 
@@ -360,7 +371,7 @@ exports.addVideowithThumbnail = async (req, res) => {
 
     if(descriptionCount<120){
       return res.status(400).json({
-        status: "error",
+        status: 400,
         message: "The video description field must contain less than 20 words.",
       });
 
@@ -371,7 +382,7 @@ exports.addVideowithThumbnail = async (req, res) => {
     // console.log(thumbnail)
     // // return;
     if (!user) {
-      return res.status(404).json({ error: 'User not found' });
+      return res.status(404).json({status:404, error: 'User not found' });
     }
 
      // Validate video file format and size
@@ -522,7 +533,8 @@ exports.getAllVideoForAdmin = async (req, res) => {
           lastName: { $first: "$lastName" },
           userEmail: { $first: "$userEmail" },
           profileImage: { $first: "$profileImage" },
-          videos: { $push: "$videos" } // Reassemble the videos array after sorting
+           // Limit videos array to the first 5 videos
+           videos: { $slice: ["$videos", 5] }
         }
       },
       {
