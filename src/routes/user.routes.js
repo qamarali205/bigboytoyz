@@ -15,7 +15,7 @@ router.post("/login",  userController.loginUser);
 
 
 
-router.post('/add-profile',authMiddleware, userController.addProfileDetails );
+router.post('/add-bio',authMiddleware, userController.addProfileDetails );
 
 router.post('/update-profile-pic',authMiddleware, upload.single('profile'), userController.updateProfilePic );
 
