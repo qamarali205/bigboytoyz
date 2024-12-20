@@ -225,7 +225,7 @@ exports.addProfileDetails =async (req, res) =>{
 
     const wordCount = bio?.trim().split(/\s+/).length;
 
-    if(wordCount<400){
+    if(wordCount>400){
       return res.status(400).json({
         status: "error",
         message: "The boi field must contain less than 400 words.",
@@ -234,7 +234,7 @@ exports.addProfileDetails =async (req, res) =>{
     }
 
     // Fetch the user details based on userId from req.user
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('-password');
 // console.log(user)
 // return;
   user.boi=bio;
@@ -297,7 +297,7 @@ exports.updateProfilePic =async (req, res) =>{
     }
 
     // Fetch the user details based on userId from req.user
-    const user = await User.findById(userId);
+    const user = await User.findById(userId).select('-password');
 
   user.profileImage=profile;
  await user.save();
