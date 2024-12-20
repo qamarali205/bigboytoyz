@@ -223,12 +223,12 @@ exports.addProfileDetails =async (req, res) =>{
 
     const { bio } = req.body;
 
-    const wordCount = bio.trim().split(/\s+/).length;
+    const wordCount = bio?.trim().split(/\s+/).length;
 
-    if(wordCount>400){
+    if(wordCount<400){
       return res.status(400).json({
         status: "error",
-        message: "The boi field must contain more than 400 words.",
+        message: "The boi field must contain less than 400 words.",
       });
 
     }
@@ -260,6 +260,64 @@ exports.addProfileDetails =async (req, res) =>{
 
 
 
+//updateProfilePic
+
+exports.updateProfilePic =async (req, res) =>{
+
+  try {
+    
+    const maxSize = 1 * 1024 * 1024; // 1MB image size less than 1Mb
+    const userId = req.user.id; // user id decode from jwt token middleware
+    const  file  = req.file;
+
+// console.log(file)
+    if(!file){
+      return res.status(400).json({
+        status: 400,
+        message: "Select An Image",
+      });
+    }
+
+    if (file.size > maxSize) {
+      return res.status(400).send({
+        status: 400,
+        message: 'Profile image size must be less than 1MB.'
+      });
+    }
+
+    // console.log(file)
+    // return;
+
+    let profile;
+    if (file) {
+      profile = await uploadSingleImageToCloudflare(
+        file,
+        "profilePic"
+      );
+    }
+
+    // Fetch the user details based on userId from req.user
+    const user = await User.findById(userId);
+
+  user.profileImage=profile;
+ await user.save();
+
+ res.status(200).json({
+  status: 200,
+      message: "image Update Successful",
+      data:user,
+
+ })
+    
+  } catch (err) {
+    res
+      .status(500)
+      .json({ status: 500, message: "Server Error", error: err.message });
+    
+  }
+
+}
+
 
 
 
@@ -284,10 +342,29 @@ exports.addVideowithThumbnail = async (req, res) => {
     const { video, thumbnail } = req.files;
 
      // Validate input
-     if (!title  || !description || !thumbnail) {
+     if (!title || !video || !description || !thumbnail) {
       return res.status(400).send({status:400,message:'Title, description ,thumbnail and video are required'});
     }
 
+    const titleCount = title?.trim().split(/\s+/).length;
+
+    if(titleCount>30){
+      return res.status(400).json({
+        status: "error",
+        message: "The video title field must contain less than 20 words.",
+      });
+
+    }
+
+    const descriptionCount = description?.trim().split(/\s+/).length;
+
+    if(descriptionCount<120){
+      return res.status(400).json({
+        status: "error",
+        message: "The video description field must contain less than 20 words.",
+      });
+
+    }
 
     // Fetch the user details based on userId from req.user
     const user = await User.findById(userId);
@@ -300,7 +377,7 @@ exports.addVideowithThumbnail = async (req, res) => {
      // Validate video file format and size
      const videoFile = video[0];
      const allowedVideoTypes = ['video/mp4'];
-     const maxSize = 7 * 1024 * 1024; // 7MB
+     const maxSize = 6 * 1024 * 1024; // 7MB
 
     if (!allowedVideoTypes.includes(videoFile.mimetype)) {
       return res.status(400).send({
@@ -329,7 +406,7 @@ exports.addVideowithThumbnail = async (req, res) => {
       );
     }
 
-    console.log(imageUrl);
+    // console.log(imageUrl);
     // return
 
     // Create a new video
@@ -401,3 +478,133 @@ exports.getVideoById = async (req, res) =>{
 
   
 }
+
+
+
+
+//getAllVideoForAdmin
+
+
+exports.getAllVideoForAdmin = async (req, res) => {
+  try {
+
+    const page = req.query.page || 1; // Current page number
+    const pageSize = req.query.pageSize || 10; // Number of users per page
+
+    // Count total users (documents) to calculate total pages
+    const totalUsersCount = await User.countDocuments();
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalUsersCount / pageSize);
+
+    // Fetch the paginated users data with video details
+    const data = await User.aggregate([
+      {
+        $lookup: {
+          from: "videos", // The collection containing the videos
+          localField: "_id", // User's ID
+          foreignField: "userId", // Field in the videos collection that references the user's ID
+          as: "videos" // Name of the field to hold the user's videos
+        }
+      },
+      {
+        $unwind: "$videos" // Unwind the videos array so we can sort them by createdAt
+      },
+      {
+        $sort: {
+          "videos.createdAt": -1 // Sort videos by `createdAt` in descending order (latest first)
+        }
+      },
+      {
+        $group: {
+          _id: "$_id", // Group back by user ID
+          firstName: { $first: "$firstName" },
+          lastName: { $first: "$lastName" },
+          userEmail: { $first: "$userEmail" },
+          profileImage: { $first: "$profileImage" },
+          videos: { $push: "$videos" } // Reassemble the videos array after sorting
+        }
+      },
+      {
+        $project: {
+          firstName: 1,
+          lastName: 1,
+          userEmail: 1,
+          profileImage: 1,
+          videos: 1 // Include the sorted video details in the output
+        }
+      },
+      {
+        $skip: (page - 1) * pageSize // Skip records based on current page and page size
+      },
+      {
+        $limit: pageSize // Limit the number of users per page
+      }
+    ]);
+
+    // Send the result along with pagination metadata
+    res.status(200).json({
+      status: 200,
+      pagination: {
+        currentPage: page,  // Current page
+        pageSize: pageSize, // Number of users per page
+        totalUsers: totalUsersCount, // Total number of users
+        totalPages: totalPages  // Total number of pages
+      },
+      data: data // Paginated user data with videos
+      
+    });
+  } catch (error) {
+    console.error("Error fetching data", error);
+    res.status(500).json({ status: 500, error: "Error fetching data" });
+  }
+};
+
+
+// getUserAllVideoById
+
+exports.getUserAllVideoById = async (req, res) => {
+  try {
+    const page = req.query.page || 1; // Current page number
+    const pageSize = req.query.pageSize || 100; // Number of videos per page
+
+    const userId = req?.params?.id; // Get the user ID from the params
+
+    // Validate that the user ID is provided
+    if (!userId) {
+      return res.status(400).json({
+        status: 400,
+        error: 'User ID is required' // Updated error message to reflect userId
+      });
+    }
+
+    // Count total videos for the user to calculate total pages
+    const totalUsersVideo = await Video.countDocuments({ userId });
+
+    // Calculate total pages
+    const totalPages = Math.ceil(totalUsersVideo / pageSize);
+
+    // Fetch the paginated videos for the user
+    const data = await Video.find({ userId })
+      .skip((page - 1) * pageSize) // Skip based on current page and page size
+      .limit(pageSize) // Limit the number of videos per page
+      .sort({ createdAt: -1 }); // Optionally, sort by creation date, descending (latest videos first)
+
+    // Send the result along with pagination metadata
+    res.status(200).json({
+      status: 200,
+      pagination: {
+        currentPage: page, // Current page
+        pageSize: pageSize, // Number of videos per page
+        totalVideos: totalUsersVideo, // Total number of videos for the user
+        totalPages: totalPages, // Total number of pages
+      },
+      data: data, // Paginated video data
+    });
+  } catch (error) {
+    console.error("Error fetching data", error);
+    res.status(500).json({ status: 500, error: "Error fetching data" });
+  }
+};
+
+
